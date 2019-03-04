@@ -72,7 +72,7 @@
     * 由于调优和存储都是在列族层次上进行的，最好使所有列族成员都有相同的访问模式(access pattern)
 * 表是行的集合，行是列族的集合，列族是列的集合，列是键值对的集合
 
-![avatar](E:/学习/bigdata/hbase/用于描述存储照片的表的HBase数据模型.png "用于描述存储照片的表的HBase数据模型")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/hbase/用于描述存储照片的表的HBase数据模型.png "用于描述存储照片的表的HBase数据模型")
 #### 区域
 * HBase自动把表水平划分成区域(region)
     * 每个区域由表中行的子集构成
@@ -95,7 +95,7 @@
     * HBase主控机(master)负责启动(bootstrap)一个全新的安装，把区域分配给注册的regionserver，恢复regionserver的故障。负载很轻
     * regionserver负责零个或多个区域的管理以及响应客户端的读/写请求。还负责区域的划分并通知HBase master有了新的子区域(daughter region)，如此，主控机就可以把父区域设为离线，并用子区域替换父区域
 
-![avatar](E:/学习/bigdata/hbase/HBase集群的成员.png "HBase集群的成员")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/hbase/HBase集群的成员.png "HBase集群的成员")
 
 * HBase依赖于ZooKeeper
     * 默认情况下，它管理一个ZooKeeper实例，作为集群的“权威机构”(authority)

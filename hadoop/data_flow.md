@@ -1,6 +1,6 @@
 ## 数据流
 ### 文件读取
-![avatar](E:/学习/bigdata/hadoop/客户端读取HDFS中的数据.png "客户端读取HDFS中的数据")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/hadoop/客户端读取HDFS中的数据.png "客户端读取HDFS中的数据")
 * 步骤一:客户端通过调用FileSystem对象的open()方法来打开希望读取的文件，对于HDFS来说，这个对象是DistributedFileSystem的一个实例
 * 步骤二:DistributedFileSystem通过远程调用(RPC)来调用namenode，以确定文件起始块的位置
     * 对于每一个块，namenode返回存有该块副本的datanode地址，datanode根据与客户端的距离排序
@@ -28,7 +28,7 @@
 * distance(/d1/r1/n1, /d2/r3/n4)=6(不同数据中心中的节点)
 Hadoop无法自动发现网络拓扑结构，需要配置。默认情况下，假设网络是扁平化的只有一层，即所有节点在同一数据中心的同一机架上，不需要进一步配置
 ### 文件写入
-![avatar](E:/学习/bigdata/hadoop/客户端将数据写入HDFS.png "客户端将数据写入HDFS")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/hadoop/客户端将数据写入HDFS.png "客户端将数据写入HDFS")
 考虑如何新建一个文件，把数据写入该文件，最后关闭该文件。如上图所示
 * 步骤一:客户端通过对DistributedFileSystem对象调用create()来新建文件
 * 步骤二:DistributedFileSystem对namenode创建一个RPC调用，在文件系统的命名空间中新建一个文件，此时文件无数据块
@@ -133,6 +133,6 @@ distcp是作为一个MapReduce作业来实现的，该复制作业是通过集�
 
 
 ### 读写操作:写操作
-![avatar](E:/学习/bigdata/hadoop/写操作.png "写操作")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/hadoop/写操作.png "写操作")
 ### 读写操作:读操作
-![avatar](E:/学习/bigdata/hadoop/读操作.png "读操作")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/hadoop/读操作.png "读操作")

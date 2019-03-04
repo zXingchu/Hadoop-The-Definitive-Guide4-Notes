@@ -36,7 +36,7 @@ HDFS (Hadoop Distributed File System)
     * 不支持文件随机修改
         * 仅支持追加写入
 ## HDFS 组成架构
-![avatar](E:/学习/bigdata/hadoop/hadoop架构.png "hadoop架构")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/hadoop/hadoop架构.png "hadoop架构")
 HDFS集群有两类节点以管理节点-工作节点模式运行，即一个namenode(管理节点)和多个datanode(工作节点)。
 * Active NameNode(AN)
     * 活动Master管理节点(集群中唯一)
@@ -80,7 +80,7 @@ HDFS集群有两类节点以管理节点-工作节点模式运行，即一个nam
     * 管理HDFS
 ## HDFS 存储机制
 ### 存储机制:文件存储
-![avatar](E:/学习/bigdata/hadoop/hadoop文件块DataNode.png "hadoop DataNode文件块")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/hadoop/hadoop文件块DataNode.png "hadoop DataNode文件块")
 * Block存储
     * Block是HDFS的最小存储单元
     * 如何设置Block大小
@@ -106,7 +106,7 @@ HDFS集群有两类节点以管理节点-工作节点模式运行，即一个nam
         * DataNode的current目录下的文件名都以 'blk\_' 为前缀
         * Block元数据文件(\*.meta)由一个包含版本、类型信息的头文件和一系列校验值组成
 ### 存储机制:元数据存储
-![avatar](E:/学习/bigdata/hadoop/hadoop文件块NameNode.png "hadoop NameNode文件块")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/hadoop/hadoop文件块NameNode.png "hadoop NameNode文件块")
 * 元数据的两种存储形式
     * 内存元数据(NameNode)
     * 文件元数据(edits + fsimage)
@@ -117,7 +117,7 @@ HDFS集群有两类节点以管理节点-工作节点模式运行，即一个nam
     * 不会为文件系统的每个更新操作进行持久化，因为写fsimage的速度非常慢
     * fsimage文件名会标记对应的Transaction Id
 * edits与fsimage的合并机制
-    ![avatar](E:/学习/bigdata/hadoop/edits与fsimage合并.jpg "edits与fsimage合并机制")
+    ![avatar](https://github.com/zXingchu/bigdata/blob/master/hadoop/edits与fsimage合并.jpg "edits与fsimage合并机制")
 ## HDFS高可用(HA)
 * 通过联合使用在多个文件系统中备份namenode的元数据和通过备用namenode创建监测点能防止数据丢失，但依旧无法实现文件系统的高可用性。namenode依旧存在单点失效(SPOF,single point of failure)的问题。namenode是唯一存储元数据与文件到数据块映射的地方，namenode失效了，那么所有的客户端，包括MapReduce作业，均无法读、写或列举文件，hadoop系统将无法提供服务直到新的namenode上线
 * 从一个失效的namenode恢复，系统管理员得启动一个拥有文件系统元数据副本的新的namenode，并配置datanode和客户端。新的namenode知道满足以下情形才能响应服务:
@@ -159,7 +159,7 @@ HDFS集群有两类节点以管理节点-工作节点模式运行，即一个nam
         * 最多可容忍N个JournalNode宕机
         * 基于Paxos算法实现
 * 利用ZooKeeper实现Active节点选举
-    ![avatar](E:/学习/bigdata/hadoop/zookeeper节点选举.jpg "zookeeper active节点选举")
+    ![avatar](https://github.com/zXingchu/bigdata/blob/master/hadoop/zookeeper节点选举.jpg "zookeeper active节点选举")
 ## 安全模式
 * 什么是安全模式
     * 安全模式是HDFS的一种特殊状态，在这种状态下， HDFS只接收读数据请求， 而不接收写入、删除、修改等变更请求
