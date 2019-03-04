@@ -71,7 +71,7 @@ Hortonworks 的 Stinger 开创性的极大的优化了 Hive 项目。 Hortonwork
 3) 高效性：在 MapReduce 的思想下， Hadoop 是并行工作的，以加快任务处理速度。
 4) 高容错性：能够自动将失败的任务重新分配。
 ### Hadoop 组成
-![avatar](E:/学习/bigdata/hadoop1-2.png "Hadoop1.x和Hadoop2.x构成对比")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/hadoop1-2.png "Hadoop1.x和Hadoop2.x构成对比")
 在 Hadoop1.x 时代， Hadoop 中的 MapReduce 同时处理业务逻辑运算和资源的调度，耦合性较大。
 1) Hadoop HDFS：一个高可靠、高吞吐量的分布式文件系统。
 2) Hadoop MapReduce：一个分布式的资源调度和离线并行计算框架。
@@ -87,7 +87,7 @@ Hortonworks 的 Stinger 开创性的极大的优化了 Hive 项目。 Hortonwork
 3) Secondary NameNode(2nn)：用来监控HDFS状态的辅助后台程序，每隔一段时间获取HDFS元数据的快照。
 #### YARN 架构概述
 
-![avatar](E:/学习/bigdata/yarn.png "YARN架构")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/yarn.png "YARN架构")
 MapReduce Status:MR状态 Job Submission:作业提交 Node Status:节点状态 Resource Request:资源请求
 1) ResourceManager(rm)：处理客户端请求、启动/监控ApplicationMaster、监控NodeManager、资源分配与调度；
 2) NodeManager(nm)：单个节点上的资源管理、处理来自ResourceManager的命令、处理来自ApplicationMaster的命令；
@@ -98,9 +98,9 @@ MapReduce 将计算过程分为两个阶段： Map 和 Reduce
 1) Map 阶段并行处理输入数据
 2) Reduce 阶段对 Map 结果进行汇总cls.avi
 ### 大数据技术生态体系
-![avatar](E:/学习/bigdata/大数据技术体系.png "大数据技术生态体系")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/大数据技术体系.png "大数据技术生态体系")
 
-![avatar](E:/学习/bigdata/大数据技术体系2.png "大数据技术生态体系2")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/大数据技术体系2.png "大数据技术生态体系2")
 图中涉及的技术名词解释如下：
 1) Sqoop： sqoop 是一款开源的工具，主要用于在 Hadoop(Hive)与传统的数据库(mysql)间进行数据的传递，可以将一个关系型数据库(例如 ： MySQL ,Oracle 等)中的数据导进到Hadoop 的 HDFS 中，也可以将 HDFS 的数据导进到关系型数据库中。
 2) Flume： Flume 是 Cloudera 提供的一个高可用的，高可靠的，分布式的海量日志采集、聚合和传输的系统， Flume 支持在日志系统中定制各类数据发送方，用于收集数据；同时， Flume提供对数据进行简单处理，并写到各种数据接受方(可定制)的能力。
@@ -122,4 +122,4 @@ MapReduce 将计算过程分为两个阶段： Map 和 Reduce
 频繁项集挖掘：将一组项分组，并识别哪些个别项会经常一起出现。
 12) ZooKeeper： Zookeeper 是 Google 的 Chubby 一个开源的实现。它是一个针对大型分布式系统的可靠协调系统，提供的功能包括：配置维护、名字服务、 分布式同步、组服务等。ZooKeeper 的目标就是封装好复杂易出错的关键服务，将简单易用的接口和性能高效、功能稳定的系统提供给用户。
 #### 推荐系统框架图
-![avatar](E:/学习/bigdata/尚硅谷推荐系统框架.png "尚硅谷推荐系统框架")
+![avatar](https://github.com/zXingchu/bigdata//blob/master/尚硅谷推荐系统框架.png "尚硅谷推荐系统框架")
