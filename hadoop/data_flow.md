@@ -1,3 +1,18 @@
+<!-- TOC -->
+
+- [数据流](#数据流)
+    - [文件读取](#文件读取)
+        - [网络拓扑与Hadoop](#网络拓扑与hadoop)
+    - [文件写入](#文件写入)
+    - [一致模型](#一致模型)
+        - [对应用设计的重要性](#对应用设计的重要性)
+    - [通过distcp并行复制](#通过distcp并行复制)
+        - [distcp用法](#distcp用法)
+        - [distcp原理](#distcp原理)
+    - [读写操作:写操作](#读写操作写操作)
+    - [读写操作:读操作](#读写操作读操作)
+
+<!-- /TOC -->
 ## 数据流
 ### 文件读取
 ![avatar](https://github.com/zXingchu/bigdata/blob/master/hadoop/客户端读取HDFS中的数据.png "客户端读取HDFS中的数据")

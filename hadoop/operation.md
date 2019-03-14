@@ -1,3 +1,13 @@
+<!-- TOC -->
+
+- [Hadoop shell 操作](#hadoop-shell-%E6%93%8D%E4%BD%9C)
+- [Hadoop REST API](#hadoop-rest-api)
+- [Hadoop Java 客户端操作](#hadoop-java-%E5%AE%A2%E6%88%B7%E7%AB%AF%E6%93%8D%E4%BD%9C)
+	- [HDFS 客户端环境准备](#hdfs-%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8E%AF%E5%A2%83%E5%87%86%E5%A4%87)
+	- [HDFS 的 API 操作](#hdfs-%E7%9A%84-api-%E6%93%8D%E4%BD%9C)
+	- [HDFS 的 I/O 流操作](#hdfs-%E7%9A%84-io-%E6%B5%81%E6%93%8D%E4%BD%9C)
+
+<!-- /TOC -->
 ## Hadoop shell 操作
 * 语法
     * hadoop fs \<args\> (使用面最广，可以操作任何文件系统)

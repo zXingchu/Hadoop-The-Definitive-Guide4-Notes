@@ -1,3 +1,36 @@
+<!-- TOC -->
+
+- [HBase 简单介绍](#hbase-%E7%AE%80%E5%8D%95%E4%BB%8B%E7%BB%8D)
+  - [HBase 基础](#hbase-%E5%9F%BA%E7%A1%80)
+    - [HBase 和 HDFS](#hbase-%E5%92%8C-hdfs)
+    - [面向列和面向行](#%E9%9D%A2%E5%90%91%E5%88%97%E5%92%8C%E9%9D%A2%E5%90%91%E8%A1%8C)
+    - [HBase 和 RDBMS](#hbase-%E5%92%8C-rdbms)
+    - [背景](#%E8%83%8C%E6%99%AF)
+  - [概念](#%E6%A6%82%E5%BF%B5)
+    - [数据模型](#%E6%95%B0%E6%8D%AE%E6%A8%A1%E5%9E%8B)
+      - [区域](#%E5%8C%BA%E5%9F%9F)
+      - [加锁](#%E5%8A%A0%E9%94%81)
+    - [实现](#%E5%AE%9E%E7%8E%B0)
+      - [运行中的HBase](#%E8%BF%90%E8%A1%8C%E4%B8%AD%E7%9A%84hbase)
+  - [安装](#%E5%AE%89%E8%A3%85)
+      - [测试驱动](#%E6%B5%8B%E8%AF%95%E9%A9%B1%E5%8A%A8)
+        - [创建一个简单的表，添加一些数据，再把表清空](#%E5%88%9B%E5%BB%BA%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E8%A1%A8%E6%B7%BB%E5%8A%A0%E4%B8%80%E4%BA%9B%E6%95%B0%E6%8D%AE%E5%86%8D%E6%8A%8A%E8%A1%A8%E6%B8%85%E7%A9%BA)
+  - [客户端](#%E5%AE%A2%E6%88%B7%E7%AB%AF)
+    - [Java](#java)
+    - [MapReduce](#mapreduce)
+    - [REST 和 Thrift](#rest-%E5%92%8C-thrift)
+  - [HBase 和 RDBMS 的比较](#hbase-%E5%92%8C-rdbms-%E7%9A%84%E6%AF%94%E8%BE%83)
+    - [HBase](#hbase)
+  - [Praxis](#praxis)
+    - [HDFS](#hdfs)
+      - [文件描述符用完](#%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%94%A8%E5%AE%8C)
+      - [datanode 上的线程用完](#datanode-%E4%B8%8A%E7%9A%84%E7%BA%BF%E7%A8%8B%E7%94%A8%E5%AE%8C)
+    - [用户界面](#%E7%94%A8%E6%88%B7%E7%95%8C%E9%9D%A2)
+    - [度量](#%E5%BA%A6%E9%87%8F)
+    - [计数器](#%E8%AE%A1%E6%95%B0%E5%99%A8)
+  - [延伸](#%E5%BB%B6%E4%BC%B8)
+
+<!-- /TOC -->
 # HBase 简单介绍
 
 ## HBase 基础

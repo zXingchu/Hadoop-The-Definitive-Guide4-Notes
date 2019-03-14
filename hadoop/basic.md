@@ -1,3 +1,15 @@
+<!-- TOC -->
+
+- [hadoop 分布式文件系统](#hadoop-%E5%88%86%E5%B8%83%E5%BC%8F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F)
+  - [Hadoop 概念](#hadoop-%E6%A6%82%E5%BF%B5)
+  - [HDFS 组成架构](#hdfs-%E7%BB%84%E6%88%90%E6%9E%B6%E6%9E%84)
+  - [HDFS 存储机制](#hdfs-%E5%AD%98%E5%82%A8%E6%9C%BA%E5%88%B6)
+    - [存储机制:文件存储](#%E5%AD%98%E5%82%A8%E6%9C%BA%E5%88%B6%E6%96%87%E4%BB%B6%E5%AD%98%E5%82%A8)
+    - [存储机制:元数据存储](#%E5%AD%98%E5%82%A8%E6%9C%BA%E5%88%B6%E5%85%83%E6%95%B0%E6%8D%AE%E5%AD%98%E5%82%A8)
+  - [HDFS高可用(HA)](#hdfs%E9%AB%98%E5%8F%AF%E7%94%A8ha)
+  - [安全模式](#%E5%AE%89%E5%85%A8%E6%A8%A1%E5%BC%8F)
+
+<!-- /TOC -->
 # hadoop 分布式文件系统
 管理网络中跨多台计算机存储的文件系统称为分布式文件系统(distributed filesystem)
 ## Hadoop 概念
