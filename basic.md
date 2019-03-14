@@ -122,4 +122,4 @@ MapReduce 将计算过程分为两个阶段： Map 和 Reduce
 频繁项集挖掘：将一组项分组，并识别哪些个别项会经常一起出现。
 12) ZooKeeper： Zookeeper 是 Google 的 Chubby 一个开源的实现。它是一个针对大型分布式系统的可靠协调系统，提供的功能包括：配置维护、名字服务、 分布式同步、组服务等。ZooKeeper 的目标就是封装好复杂易出错的关键服务，将简单易用的接口和性能高效、功能稳定的系统提供给用户。
 #### 推荐系统框架图
-![avatar](https://github.com/zXingchu/bigdata/blob/master/尚硅谷推荐系统框架.png "尚硅谷推荐系统框架")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/某推荐系统框架.png "某推荐系统框架")
