@@ -23,6 +23,20 @@
             - [类型转换](#类型转换)
     - [表](#表)
         - [托管表和外部表](#托管表和外部表)
+        - [分区和桶](#分区和桶)
+            - [分区](#分区)
+            - [桶](#桶)
+        - [存储格式](#存储格式)
+            - [默认存储格式：分隔的文本](#默认存储格式分隔的文本)
+            - [二进制存储格式：顺序文件、Avro数据文件、Parquet文件、RCFile与ORCFile](#二进制存储格式顺序文件avro数据文件parquet文件rcfile与orcfile)
+            - [使用定制的SerDe：RegexSerDe](#使用定制的serderegexserde)
+            - [存储句柄](#存储句柄)
+        - [导入数据](#导入数据)
+            - [INSERT 语句](#insert-语句)
+            - [多表插入](#多表插入)
+            - [CREATE TABLE ... AS SELECT 语句](#create-table--as-select-语句)
+        - [表的修改](#表的修改)
+        - [表的丢弃](#表的丢弃)
 
 <!-- /TOC -->
 # 关于 Hive
@@ -436,16 +450,365 @@ hive> SHOW TABLES;
 * 可以使用CAST操作显式进行数据类型转换
     * CAST('1' AS INT)将把字符串'1'转换成整数值1。强制类型转换失败，返回空值NULL
 ## 表
-
+* Hive的表在逻辑上由存储的数据和描述表中数据形式的相关元数据组成
+* Hive数据一般放在HDFS中，也可以放在其他任何Hadoop文件系统中，包括本地文件系统或S3
+* Hive元数据存放在关系型数据库中，而不是HDFS中
 ### 托管表和外部表
+* 在Hive中创建表时，默认情况下Hive负责管理数据
+    * Hive把数据移入它的“仓库目录”(warehouse directory)
+* 创建一个外部表(external table)
+    * Hive到仓库目录以外的位置访问数据
+* 托管表：
+    * 加载数据到托管表时，Hive把数据移到仓库目录
+        ```
+        CREATE TABLE managed_table (dummy STRING);
+        LOAD DATA INPATH '/user/tom/data.txt' INTO table managed_table;
+        ```
+        * 把文件hdfs://user/tom/data.txt移动到Hive的managed_table表的仓库目录中，即hdfs://user/hive/warehouse/managed_table
+            * 只有源和目标文件在同一个文件系统中移动才会成功。使用LOCAL关键字，Hive会把本地文件系统的数据复制到仓库目录
+        * 加载操作就是文件系统中的文件移动或文件重命名，执行速度很快
+            * 即使是托管表，Hive也并不检查表目录中的文件是否符合为表所声明的模式
+            * 只有在查询时才会知道有数据和模式不匹配
+    * 丢弃一个表
+        ```
+        DROP TABLE managed_table;
+        ```
+        * 此表包括它的元数据和数据，会被一起删除
+* 外部表：
+    * 外部数据的位置需要在创建表的时候指明：
+        ```
+        CREATE EXTERNAL TABLE external_table (dummy STRING)
+          LOCATION '/user/tom/external_table';
+        LOAD DATA INPATH '/user/tom/data.txt' INTO TABLE external_table;
+        ```
+        *  使用EXTERNAL关键字
+        *  定义时Hive甚至不会检查这一外部位置是否存在
+    * 丢弃外部表时，Hive不会碰数据，只会删除元数据
+* 多数情况下，这两种方式没有太大的区别。一个经验法则：
+    *  所有处理都由Hive完成，应该使用托管表
+    *  用Hive和其他工具来处理同一个数据集，应该使用外部表
+    * 普遍的用法是把存放在HDFS(由其他进程创建)的初始数据集用作外部表进行使用，然后用Hive的变换功能把数据移到托管的Hive表
+        *  反之，外部表(未必在HDFS中)可以用于从Hive导出数据供其他应用程序使用
+              * 也可用 INSERT OVERWRITE DIRECTORY 把数据导出到Hadoop文件系统中
+* 需要使用外部表的另一个原因是想为同一个数据集关联不同的模式
 
+### 分区和桶
+* Hive把表组织成分区(partition)
+    * 根据分区列(partition column)的值对表进行粗略划分的机制
+    * 使用分区可以加快数据分片(slice)的查询速度
+* 表或分区可以进一步分为桶(bucket)
+    * 为数据提供额外的结构以获得更高效的查询处理
+        * 例如，根据用户ID来划分桶，可以在所有用户集合的随机样本上快速计算基于用户的查询
+#### 分区
+* 以分区的常用情况为例：考虑日志文件，其中每条记录包含一个时间戳，根据日期对它进行分区，同一天的记录被存放在同一个分区
+    * 优点是对于限制到某个或某些特定日期的查询，处理可以变得非常高效，只需要扫描查询范围内分区中的文件
+    * 使用分区并不会影响大范围查询的执行，仍然可以查询跨多个分区的整个数据集
+    * 一个表可以以多个维度来进行分区。例如进一步根据国家对每个分区进行子分区(subpartition)，加速根据地理位置进行的查询
+* 分区是在创建表的时候用 PARTITIONED BY 子句定义的。该子句需要定义列的列表
+    * 在创建表后，可以使用 ALTER TABLE 语句来增加或移除分区
+* 例如，对前面的假想的日志文件，可能要把表记录定义为由时间戳和日志行构成：
+    ```
+    CREATE TABLE logs (ts BIGINT, line STRING)
+    PARTITIONED BY (dt STRING, country STRING);
+    ```
+    * 在把数据加载到分区表的时候，要显式指定分区值：
+        ```
+        LOAD DATA LOCAL INPATH 'input/hive/partitions/file1'
+        INTO TABLE logs
+        PARTITION (dt='2001-01-01', country='GB');
+        ```
+* 在文件系统级别，分区只是表目录下嵌套的子目录
+    * 上述操作把更多文件加载到logs表以后，目录结构可能像下面这样：
+        /user/hive/warehouse/logs
+        |————dt=2001-01-01/
+        |    |———country=GB/
+        |    |   |——file1
+        |    |   |__file2
+        |    |___country=US/
+        |        |__file3
+        |____dt=2001-01-02/
+             |———country=GB/
+             |   |__file4
+             |___country=US/
+                 |__file5
+                 |__file6
+* 用 SHOW PARTITIONS 命令让Hive告诉我们表中有哪些分区：
+    ```
+    hive> SHOW PARTITIONS logs;
+    dt=2001-01-01/country=GB
+    dt=2001-01-01/country=US
+    dt=2001-01-02/country=GB
+    dt=2001-01-02/country=US
+    ```
+*  PARTITIONED BY 子句中的列定义是表中正式的列，称为分区列(partition column)，但数据文件并不包含这些列的值，它们源于目录名
+*  可以在 SELECT 语句中以通常的方式使用分区列。Hive会对输入进行修剪：
+    ```
+    SELECT ts, dt, line
+    FROM logs
+    WHERE country='GB'
+    ```
+    * dt值Hive从目录中读取 
+#### 桶
+* 把表(或分区)组织成桶(bucket)有两个理由：
+    * 获得更高的查询处理效率
+        * 桶为表加上了额外的结构。Hive在处理有些查询时能够利用这个结构
+        * 具体而言，连接两个在(包含连接列的)相同列上划分了桶的表。可以使用map端连接(map-side join)高效地实现
+    * 使“取样”或者说“采样”(sampling)更高效
+* 使用 CLUSTERED BY 子句来指定划分桶所用的列和要划分的桶的个数：
+    ```
+    CREATED TABLE bucketed_users (id INT, name STRING)
+    CLUSTERED BY (id) INTO 4 BUCKETS;
+    ```
+    * 此处使用用户ID来确定如何划分桶(Hive对值进行哈希并将结果除以桶的个数取余数)
+    * 对于map端连接的情况，首先两个表以相同方式划分桶，处理左边表内某个桶的mapper知道右边表内相匹配的行在对应的桶内，这样mapper只需要获取那个桶即可进行连接
+        * 这一优化方法不一定要求两个表必须具有相同的桶的个数，两个表的桶个数是倍数关系也可以
+* 桶中的数据可以根据一个或多个列另外进行排序
+    * 对每个桶的连接变成了高效的归并排序(merge-sort)，因此可以进一步提升map端连接的效率
+    * 以下语法声明一个表使其使用排序桶：
+        ```
+        CREATED TABLE bucketed_users (id INT, name STRING)
+        CLUSTERED BY (id) SORTED BY (id ASC) INTO 4 BUCKETS;
+        ```
+* Hive并不检查数据文件中的桶是否和表定义中的桶一致(无论是对于同的数量或用于划分桶的列)
+    * 两者不匹配，在查询时可能会碰到错误或未定义的结果
+    * 建议让Hive来进行分桶的操作
 
+* 一个没有划分桶的用户表：
+    ```
+    hive> SELECT * FROM users;
+    0   Nat
+    2   Joe
+    3   Kay
+    4   Ann
+    ```
+* 要向分桶后的表中填充成员，需要将hive.enforce.bucketing属性设置为true
+    * Hive就知道用表定义中声明的数量来创建桶
+    ```
+    INSERT OVERWRITE TABLE bucketed_users
+    SELECT * FROM users;
+    ```
+* 物理上，每个桶就是表(或分区)目录里的一个文件。它的文件名并不重要，桶n是按照字典序排列的第n个文件
+    * 事实上，桶对应于MapReduce的输出文件分区：一个作业产生的桶(输出文件)和reduce任务个数相同
+    * 运行如下命令查看刚才创建的bucketed_users表的布局
+    ```
+    hive> dfs -ls /user/hive/warehouse/bucketed_users;
+    000000_0
+    000001_0
+    000002_0
+    000003_0
+    ```
+    * 第一个桶里包括用户ID 0和4，因为一个INT的哈希值就是这个整数本身，在这里即除以桶数(4)以后的余数：
+        ```
+        hive> dfs -cat /user/hive/warehouse/bucketed_users/000000_0;
+        0Nat
+        4Ann
+        ```
+    * 用TABLESAMPLE子句对表进行取样，可以获得相同的结果。这个子句会将查询限定在表的一部分桶内，而不是使用整个表：
+        ```
+        // 返回约1/4的数据行
+        hive> SELECT * FROM bucketed_users
+            > TABLESAMPLE(BUCKET 1 OUT OF 4 ON id);
+        4 Ann
+        0 Nat
+        // 返回约一半的数据行
+        hive> SELECT * FROM bucketed_users
+            > TABLESAMPLE(BUCKET 1 OUT OF 2 ON id);
+        4 Ann
+        0 Nat
+        2 Joe
+        hive> SELECT * FROM bucketed_users
+            > TABLESAMPLE(BUCKET 1 OUT OF 4 ON rand());
+        2 Joe
+        ```
+        * 桶的个数从1开始计数。查询只需要读取和TABLESAMPLE子句匹配的桶，所以取样分桶表示非常高效的操作
+        * 如果使用rand()函数对没有划分成桶的表进行取样，即使只需要读取很小一部分样本，也要扫描整个输入数据集
+### 存储格式
+* Hive从两个维度对表的存储进行管理：行格式(row format)和文件格式(file format)
+* 行格式指行和一行中的字段如何存储
+    * 按照Hive的术语，行格式的定义由SerDe(序列化和反序列化工具 Serializer-Deserializer)定义
+    * 当作为反序列化工具进行使用时(查询表时)，SerDe将把文件中字节形式的数据行反序列化为Hive内部操作数据行时所使用的对象形式
+    * 使用序列化工具时(执行INSERT或CTAS)，表的SerDe会把Hive的数据行内部表示形式序列化成字节形式并写到输出文件中
+* 文件格式指一行中字段容器的格式
+    * 最简单的格式是纯文本文件
+    * 也可以使用面向行的和面向列的二进制格式
+#### 默认存储格式：分隔的文本
+* 创建表时没有用ROW FORMAT或STORED AS子句，那么Hive所使用的默认格式是分隔的文本，每行存储一个数据行
+* 分隔符
+    * 默认的行内分隔符不是制表符，而是ASCII控制码集合中的Control-A(ASCII码为1)
+        * 选择Control-A作为分隔符因为和制表符相比，出现在字段文本中的可能性比较小
+        * 在Hive中无法对分隔符进行转义，挑选一个不会再数据字段中用到的字符作为分隔符非常重要
+    * 集合类元素的默认分隔符为字符Control-B
+        * 用于分隔ARRAY或STRUCT或MAP的键-值对中的元素
+    * 默认的映射键(map key)分隔符为字符Control-C
+        * 用于分隔MAP的键和值
+    * 表中各行用换行符分隔
+    ```
+    CREATE TABLE ...;
+    ```
+    等价于
+    ```
+    CREATE TABLE ...
+    ROW FORMAT DELIMITED
+        FIELDS TERMINATED BY '\001'
+        MAP KEYS TERMINATED BY '\002'
+        LINES KEYS TERMINATED BY '\n'
+    STORED AS TEXTFILE;
+    ```
+    * 可以使用八进制形式来表示分隔符，例如001表示Control-A
+    * 对于嵌套数据类型，嵌套的层次(level)决定了使用哪种分隔符
+        * 例如对于数组的数组，外层的数组的分隔符如前所述Control-B字符，内层数组则使用分隔符列表中的下一项(Control-C字符)作为分隔符
+        * 不确定Hive使用哪个字符作为某个嵌套结构的分隔符，可以运行以下命令：
+            ```
+            CREATE TABLE nested
+            AS
+            SELECT array(array(1, 2), array(3, 4))
+            FROM dummy;
+            ```
+        * 然后再使用hexdump或类似命令来查看输出文件的分隔符
+        * 
+    * Hive支持8级分隔符，分别对应于ASCII编码的1,2,......,8
+        * 只能重载其中的前三个
+* 分隔格式处理：Hive在内部使用一个名为LazySimpleSerDe的SerDe来处理这种分隔格式
+    * 面向行的MapReduce文本输入和输出格式也是用此处理
+    * 此SerDE对字段的序列化是延迟处理的，只有在访问字段时才进行反序列化
+    * 由于文本以冗长的形式存放，此种存储格式并不紧凑
+    * 使用其他工具(MapReduce程序或Streaming)来处理这样的格式非常容易
+        * 但还可以选择一些更紧凑和高效的二进制SerDe
 
+#### 二进制存储格式：顺序文件、Avro数据文件、Parquet文件、RCFile与ORCFile
+* 通过 CREATE TABLE 语句中的 STORED AS 子句做相应声明
+    * 不需要指定 ROW FORMAT，因为其格式由底层的二进制文件格式来控制
+* 二进制格式可划分为两大类：面向行的格式和面向列的格式
+    * 面向列的存储格式比较适用于只访问一小部分列的查询
+    * 面向行的存储格式适合同时处理一行中很多列的情况
+* Hive本身支持两种面向行的格式：Avro数据文件和顺序文件
+    * 都是通用的可分割、可压缩的格式
+    * Avro还支持模式演化以及多种编程语言的绑定
+    ```
+    SET hive.exec.compress.output=true;
+    SET avro.output.codec=snappy;
+    CREATE TABLE ... STORED AS AVRO;
+    ```
+    * 使用上述语句可以将表存储我Avro格式。设置响应属性可支持表压缩
+    * 顺序文件 STORED AS SEQUENCEFILE
+* Hive本身可支持的面向列的格式包括：Parquet、RCFile和ORCFile
+    ```
+    CREATE TABLE users_parquet STORED AS PARQUET
+    AS
+    SELECT * FROM users;
+    ```
+#### 使用定制的SerDe：RegexSerDe
+* 使用定制的SerDe来加载数据(定制SerDe：采用正则表达式从一个文本文件中读取定长的观测站元数据)
+    ```
+    CREATE TABLE stations (usaf STRING, wban STRING, name STRING)
+    ROW FORMAT SERDE 'org.apache.hadoop.hive.contrib.serde2.RegexSerDe'
+    WITH SERDEPROPERTIES (
+        "input.regex" = "(\\d{6}) (\\d{5}) (.{29}) .*"
+    );
+    ```
+    * 用 SERDE 关键字和实现SerDe的Java类的完整类名，来指明使用哪个SerDE
+    * SerDe可以用 WITH SERDEPROPERTIES 子句来设置额外的属性。此处设置RegexSerDe特有的input.regex属性
+        * input.regex是在反序列化期间将要使用的正则表达式模式，用来将数据行(row)中的部分文本转化为列的集合
+            * 正则表达式匹配时使用Java的正则表达式语法(http://bit.ly/java_regex)
+            * 通过识别一组一组的括号来确定列(称为捕获组，即capturing group)
+                * 在左括号后加问号 ? 表示“非捕获组”(noncapturing group)例如(?ab+)。有多种表示非捕获组的构造结构
+                * 此示例有三个捕获组：usaf(六位数的标识符)、wban(五位数的标识符)以及name(29个字符的定长列)
 
+```
+LOAD DATA LOCAL INPATH "input/ncdc/metadata/stations-fixed-width.txt INTO
+TABLE stations;
+// 简单查询，反序列化会调用SerDe
+hive> SELECT * FROM stations LIMIT 4;
+10000 99999 BOGUS NORWAY
+010003 99999 BOGUS NORWAY
+010010 99999 JAN MAYEN
+010013 99999 ROST
+```
+* 上例RegexSerDe能够帮助Hive获取数据，但是它的效率很低，因此一般不用于通用存储格式，应当考虑把数据复制为二进制存储格式
 
+#### 存储句柄
+* 存储句柄(Storage handler)用于Hive自身无法访问的存储系统，比如HBase
+    * 存储句柄使用 STORED BY 子句来指定。代替了 ROW FORMAT 和 STORED AS 子句
+    * 有关HBase集成的详细信息可以参考Hive的英文维基页面(http://bit.ly/hbase_int)
 
+### 导入数据
+* LOAD DATA
+* INSERT
+* CTAS，CREATE TABLE ... AS SELECT
+* 关系型数据库导入Hive：Sqoop
+#### INSERT 语句
+```
+INSERT OVERWRITE TABLE target
+SELECT col1, col2
+  FROM source;
+```
+* 简单示例
+* OVERWRITE 意味着目标表内容会被替换
+* INSERT INTO TABLE target
+```
+INSERT OVERWRITE TABLE target
+PARTITION (dt='2001-01-01')
+SELECT col1, col2
+  FROM source;
+```
+* 分区的表，可以使用 PARTITION 子句来指明数据要插入哪个分区
+```
+INSERT OVERWRITE TABLE target
+PARTITION (dt)
+SELECT col1, col2, dt
+  FROM source;
+```
+* 可以在 SELECT 语句中通过使用分区值来动态指明分区
+    * 这种方法称为动态插入(dynamic-partition insert)
+* INSERT INTO TABLE ... VALUES
+#### 多表插入
+```
+FROM source
+INSERT OVERWRITE TABLE stations_by_year
+SELECT year, COUNT(DISTINCT station)
+GROUP BY year
+INSERT OVERWRITE TABLE records_by_year
+SELECT year, COUNT(1)
+GROUP BY year
+INSERT OVERWRITE TABLE good_records_by_year
+SELECT year, COUNT(1)
+WHERE temperature != 9999 AND quality IN (0, 1, 4, 5, 9)
+GROUP BY year
+```
+* 把 INSERT 语句倒过来，把 FROM 子句放在最前面，查询的效果是一样的
+* 可在同一个查询中使用多个 INSERT 子句。此多表插入(multitable insert)方法比多个单独的INSERT语句效率更高
+    * 只需要扫描一遍源表就可以生成多个不相交的输出
+#### CREATE TABLE ... AS SELECT 语句
+```
+CREATE TABLE target
+AS
+SELECT col1, col2
+FROM source;
+```
+* 新表的列的定义是从 SELECT 子句所检索的列导出的
+    * 上面的查询中，target表有两列，分别名col1和col2，数据类型和源表中对应的列相同
+* CAST操作是原子的
+### 表的修改
+* Hive使用读时模式(schema on read)，创建表后对表定义的修改非常灵活
+    * 由用户确保修改数据以符合新的结构
+```
+ALTER TABLE source RENAME TO target;
+```
+* 重命名表
+    * 更新表的元数据
+    * 托管表：把表目录移到新名称所对应的目录下
+        * /user/hive/warehouse/source 重命名为 /user/hive/warehouse/target
+    * 外部表：只更新元数据
 
-
+```
+ALTER TABLE target ADD COLUMNS (col3 STRING);
+```
+* 添加一个新列
+    * 新的列col3添加在已有(非分区)列的后面
+    * 数据文件没有被更新，查询col3的所有值返回空值null(原文件无额外的字段)
+    * 更常用的做法：创建一个定义了新列的新表，使用 SELECT 语句把数据填充进去
+* 更进一步了解修改表的结构，包括添加或丢弃分区、修改和替换列，修改表和SerDe的属性，访问Hive的英文维基页面(http://bit.ly/data_def_lang)
+### 表的丢弃
 
 
 
