@@ -37,6 +37,22 @@
             - [CREATE TABLE ... AS SELECT 语句](#create-table--as-select-语句)
         - [表的修改](#表的修改)
         - [表的丢弃](#表的丢弃)
+    - [查询数据](#查询数据)
+        - [排序和聚集](#排序和聚集)
+        - [MapReduce 脚本](#mapreduce-脚本)
+        - [连接](#连接)
+            - [内连接](#内连接)
+            - [外连接](#外连接)
+            - [半连接](#半连接)
+            - [map 连接](#map-连接)
+        - [子查询](#子查询)
+        - [视图](#视图)
+    - [用户定义函数](#用户定义函数)
+        - [UDTF](#udtf)
+        - [写 UDF](#写-udf)
+        - [写 UDAF](#写-udaf)
+            - [更复杂的UDAF](#更复杂的udaf)
+    - [延伸](#延伸)
 
 <!-- /TOC -->
 # 关于 Hive
@@ -519,19 +535,21 @@ hive> SHOW TABLES;
         ```
 * 在文件系统级别，分区只是表目录下嵌套的子目录
     * 上述操作把更多文件加载到logs表以后，目录结构可能像下面这样：
-        /user/hive/warehouse/logs
-        |————dt=2001-01-01/
-        |    |———country=GB/
-        |    |   |——file1
-        |    |   |__file2
-        |    |___country=US/
-        |        |__file3
-        |____dt=2001-01-02/
-             |———country=GB/
-             |   |__file4
-             |___country=US/
-                 |__file5
-                 |__file6
+        ```
+            /user/hive/warehouse/logs
+            |————dt=2001-01-01/
+            |    |———country=GB/
+            |    |   |——file1
+            |    |   |__file2
+            |    |___country=US/
+            |        |__file3
+            |____dt=2001-01-02/
+                |———country=GB/
+                |   |__file4
+                |___country=US/
+                    |__file5
+                    |__file6
+        ```
 * 用 SHOW PARTITIONS 命令让Hive告诉我们表中有哪些分区：
     ```
     hive> SHOW PARTITIONS logs;
@@ -809,7 +827,482 @@ ALTER TABLE target ADD COLUMNS (col3 STRING);
     * 更常用的做法：创建一个定义了新列的新表，使用 SELECT 语句把数据填充进去
 * 更进一步了解修改表的结构，包括添加或丢弃分区、修改和替换列，修改表和SerDe的属性，访问Hive的英文维基页面(http://bit.ly/data_def_lang)
 ### 表的丢弃
+* DROP TABLE 语句用于删除表的数据和元数据
+    * 外部表只删除元数据
+* TRUNCATE TABLE 语句删除表内的所有数据，保留表的定义
+    * 对外部表无作用，在Hive的shell环境下使用 dfs -rmr 命令直接删除外部表目录
+    * CREATE TABLE new_table LIKE existing_table; 使用 LIKE 关键字创建一个与第一个表模式相同的新表
+
+## 查询数据
+* 讨论如何使用 SELECT 语句的各种形式从Hive中检索数据
+
+### 排序和聚集
+* Hive中可以使用标准的 ORDER BY 子句对数据进行排序
+    * ORDER BY 将对输入执行并行全排序
+* Hive的非标准的扩展 SORT BY 为每个reducer产生一个排序文件
+    * 不需要结果是全局排序的情况下可用
+    * DISTRIBUTE BY 某些情况下，需要某个特定的行应该到哪个reducer，其目的通常是为了执行后续的聚集操作
+    ```
+    hive> FORM records2
+        > SELECT year, temperature
+        > DISTRIBUTE BY year
+        > SORT BY year ASC, temperature DESC;
+    1949    111
+    1949    78
+    1950    22
+    1950    0
+    1950    -11
+    ```
+    * 如果 SORT BY 和 DISTRIBUTE BY 中所用的列相同，可以缩写为 CLUSTER BY 以便同时指定两者所用的列
+        * CLUSTER BY 不能指定排序为asc或desc的规则，只能是desc倒序排列
+
+### MapReduce 脚本
+* TRANSFORM、 MAP 和 REDUCE 子句可以在HIve中调用外部脚本或程序
+```
+#!/usr/bin/env python
+
+import re
+import sys
+
+for line in sys.stdin:
+  (year, temp, q) = line.strip().split()
+  if (temp != "9999" and re.match("[01459]", q)):
+    print "%s\t%s" % (year, temp)
+```
+* 上述是过滤低质量气象记录的python脚本，Hive中可以采用下述语句使用这个脚本
+```
+hive> ADD FILE /Users/tom/book-workspace/hadoop-book/ch17-hive/src/main/python/is_good_quality.py;
+hive> FROM records2
+    > SELECT TRANSFORM(year, temperature, quality)
+    > USING 'is_good_quality.py'
+    > AS year, temperature;
+1950 0
+1950 22
+1950 -11
+1949 111
+1949 78
+```
+* 运行查询前，需要在Hive中注册脚本
+    * 通过这一操作，Hive知道需要把脚本文件传输到Hadoop集群上
+* 查询本身把year，temperature和quality这些字段以制表符分隔的行的形式流式传递给脚本 is_good_quality，并把制表符分隔的输出解析为year和temperature字段，最终形成查询的输出
+* 如果要用查询的嵌套形式，可以指定map和reduce函数。下面用 MAP 和 REDUCE 关键字。在这两个地方用 SELECT TRANSFORM 也能达到同样的效果
+```
+#!/usr/bin/env python
+
+import sys
+
+(last_key, max_val) = (None, 0)
+for line in sys.stdin:
+  (key, val) = line.strip().split("\t")
+  if last_key and last_key != key:
+    print "%s\t%s" % (last_key, max_val)
+    (last_key, max_val) = (key, int(val))
+  else:
+    (last_key, max_val) = (key, max(max_val, int(val)))
+
+if last_key:
+  print "%s\t%s" % (last_key, max_val)
+```
+```
+FROM (
+    FROM records2
+    MAP year, temperature, quality
+    USING 'is_good_quality.py'
+    AS year, temperature) map_output
+REDUCE year, temperature
+USING 'max_temperature_reduce.py'
+AS year, temperature;
+```
+
+### 连接
+* 和直接使用MapReduce相比，使用Hive的一个好处在于Hive简化了常用操作
+#### 内连接
+```
+hive> SELECT * FROM sales;
+joe 2
+hank 4
+Ali 0
+Eve 3
+Hank 2
+hive> SELECT * FROM things;
+2 Tie
+4 Coat
+3 Hat
+1 Scarf
+hive> SELECT sales.*, things.* FROM sales JOIN things ON (sales.id = things.id);
+Joe 2 2 Tie
+Hank 4 4 Coat
+Eve 3 3 Hat
+Hank 2 2 Tie
+```
+* 最简单的一种连接。输入表之间的每次匹配都会在输出表里生成一行
+* Hive只支持等值连接(equijion)
+* 连接谓词中使用 AND 关键字分隔
+* 查询中可使用多个 JOIN...ON... 子句来连接多个表
+    * Hive会智能地以最少MapReduce作业数来执行连接
+* Hive 允许在 SELECT 语句的 FROM 子句中列出要连接的表，而在 WHERE 子句中指定连接条件。上例等价于
+    ```
+    hive> SELECT sales.*, things.* FROM sales, things WHERE sales.id = things.id;
+    ```
+* 单个的连接用一个MapReduce作业实现
+    * 多个连接条件中使用了相同的列，那么平均每个连接可以少用一个MapReduce作业来实现
+* JOIN 子句中表的顺序很重要：一般最好将最大的表放在最后
+    * 如何为Hive的查询规划器给出提示，可以访问Hive的维基页面
+* 可以在查询前使用 EXPLAIN 关键字来查看 Hive 将为某个查询使用多少个MapReduce作业
+    * 查看更详细的信息，可以在查询前使用 EXPLAIN EXTENDED
+    ```
+    EXPLAIN
+    SELECT sales.*, things.*
+    FROM sales JOIN things ON (sales.id = things.id);
+    ```
+* Hive 目前使用基于规则的查询优化器来确定查询是如何执行的
+    * 0.14.0开始，也可以使用基于代价的优化器
+
+#### 外连接
+```
+hive> SELECT sales.*, things.* FROM sales LEFT OUTER JOIN things ON (sales.id = things.id);
+Joe 2 2 Tie
+Hank 4 4 Coat
+Ali 0 NULL NULL
+Eve 3 3 Hat
+Hank 2 2 Tie
+hive> SELECT sales.*, things.* FROM sales RIGHT OUTER JOIN things ON (sales.id = things.id);
+Joe 2 2 Tie
+Hank 2 2 Tie
+Hank 4 4 Coat
+Eve 3 3 Hat
+NULL NULL 1 Scarf
+hive> SELECT sales.*, things.* FROM sales FULL OUTER JOIN things ON (sales.id = things.id);
+Ali 0 NULL NULL
+NULL NULL 1 Scarf
+Joe 2 2 Tie
+Hank 2 2 Tie
+Eve 3 3 Hat
+Hank 4 4 Coat
+```
+* 外连接可以找到连接表中不能匹配的数据行。上述为左外连接、右外连接和全外连接(full outer join)的示例
+#### 半连接
+```
+SELECT *
+FROM things
+WHERE things.id IN (SELECT id from sales);
+```
+等价于
+```
+hive> SELECT * FROM things LEFT SEMI JOIN sales ON (sales.id = things.id);
+2 Tie
+4 Coat
+3 Hat
+1 Scarf
+```
+* LEFT SEMI JOIN 查询时必须遵循一个限制：右表只能在 ON 子句中出现
+
+#### map 连接
+```
+SELECT sales.*, things.* 
+FROM sales JOIN things ON (sales.id = things.id);
+```
+* 如果有一个连接表小到足以放入内存，Hive就把较小的表(things)放入每个mapper的内存来执行连接操作，这就称为map连接
+* 执行这个查询不适用reducer，因此此查询对 RIGHT 或 FULL OUTER JOIN 无效，因为只有在对所有输入上进行聚集的步骤才能检测到哪个数据行无法匹配
+* map连接可以利用分桶的表
+    * 需要用下面的语法启用优化选项：
+        ```
+        SET hive.optimize.bucketmapjoin=true;
+        ```
+### 子查询
+* Hive对子查询的支持很有限，只允许子查询出现在 SELECT 语句的 FROM 子句中，或某些特殊情况下的 WHERE 子句中
+```
+SELECT station, year, AVG(max_temperature)
+FROM (
+SELECT station, year, MAX(temperature) AS max_temperature
+FROM records2
+WHERE temperature != 9999 AND quality IN (0, 1, 4, 5, 9)
+GROUP BY station, year
+) mt
+GROUP BY station, year
+```
+### 视图
+* 视图是一种用 SELECT 语句定义的虚表(virtual table)
+    * 视图可以用来以一种不同于磁盘实际存储的形式把数据呈现给用户
+        * 现有表的数据常常需要以一种特殊的方式进行简化和聚集以便于后期处理
+    * 视图可以用来限制用户，使其只能访问被授权可以看到的子集
+* Hive中，创建视图时并不执行查询和把视图物化存储到磁盘上，查询只是存储在metastore中。视图的 SELECT 语句只是在执行引用视图的语句时才执行
+    * 视图要对基表进行大规模的变换，或视图的查询会频繁执行，可以选择新建一个表，手工物化它(CREATE TABLE...AS SELECT)
+* Hive的视图是只读的，无法通过视图为基表加载或插入数据
+* SELECT TABLES 命令的输出结果包括视图
+* DESCRIBE EXTENDED view_name 命令查看某个视图的详细信息
+```
+CREATE VIEW valid_records
+AS
+SELECT *
+FROM records2
+WHERE temperature != 9999 AND quality IN (0, 1, 4, 5, 9);
 
 
+CREATE VIEW max_temperatures (stations, year, max_temperature)
+AS
+SELECT stations, year, MAX(temperature) FROM valid_records
+GROUP BY stations, year;
 
+SELECT stations, year, AVG(max_temperature)
+FROM max_temperatures
+GROUP BY stations, year;
+```
+* 此查询和前面使用子查询的查询是一样的。Hive为他们所创建的MapReduce作业的个数也是一样的：都是两个，每个 GROUP BY 使用一个
+    * 即使在执行时，Hive也不会在不必要的情况下物化视图
+## 用户定义函数
+* 编写用户定义函数(user-defined function, UDF)，Hive可以方便地插入用户写的处理代码并在查询中调用它们
+* UDF必须用Java语言编写
+    * 其他编程语言可以考虑使用 SELECT TRANSFORM 查询，可以让数据流经用户定义的脚本
+* Hive中有三种UDF，它们所接受的输入和产生的输出的数据行的数量不同：
+    * (普通)UDF
+        * UDF操作作用于单个数据行，且产生一个数据行作为输出
+        * 大多数函数(例如数学函数和字符串函数)都属于这一类
+    * 用户定义聚集函数(user-defined aggregate function, UDAF)
+        * UDAF接受多个输入数据行，并产生一个输出数据行
+        * 像 COUNT 和 MAX 这样的函数
+    * 用户定义表生成函数(user-defined table-generating function, UDTF)
+        * UDTF作用于单个数据行，且产生多个数据行(即一个表)作为输出
+### UDTF
+```
+CREATE TABLE arrays (x ARRAY<STRING>) ROW
+FORMAT DELIMITED
+  FIELDS TERMINATED BY '\001'
+  COLLECTION ITEMS TERMINATED BY '\002';
+``` 
+* 考虑上述样式的表，只有一列x，包含的是字符串数组
+```
+hive> SELECT * FROM arrays;
+["a", "b"]
+["c", "d", "e"]
+hive> SELECT explode(x) AS y FROM arrays;
+a
+b
+c
+d
+e
+```
+* 此处使用 explode UDTF 对表进行变换。此函数为数组中的每一项输出一行
+* 带 UDTF 的 SELECT 语句在使用时有一些限制(例如，不能检索额外的列表达式)，使实际使用时这些语句的用处不大
+    * select id,explode(arry1) from table; 错误
+    * 为此，Hive支持 LATERAL VIEW 查询(http://bit.ly/lateral_view)
+        * 在使用lateral view的时候需要指定视图别名和生成的新列别名
+            ```
+            select id,num from table lateral view explode(array1) subview as num;
+            select id,num1,num2 from table
+            lateral view explode(array1) subview1 as num1
+            lateral view explode(array2) subview2 as num2
+            where ...;
+            ```
+### 写 UDF
+```
+package com.hadoopbook.hive;
 
+import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.hive.ql.exec.UDF;
+import org.apache.hadoop.io.Text;
+
+public class Strip extends UDF {
+  private Text result = new Text();
+  
+  public Text evaluate(Text str) {
+    if (str == null) {
+      return null;
+    }
+    result.set(StringUtils.strip(str.toString()));
+    return result;
+  }
+  
+  public Text evaluate(Text str, String stripChars) {
+    if (str == null) {
+      return null;
+    }
+    result.set(StringUtils.strip(str.toString(), stripChars));
+    return result;
+  }
+}
+```
+* 一个简单的剪除字符串尾字符的UDF
+    * Hive已经有一个内置的名为trim的函数
+* 上述Strip类有两个evaluate()方法：
+    * evaluate(Text str)去除前导和结束的空白字符
+    * evaluate(Text str, String stripChars)去除字符串尾出现的指定字符集合中的任何字符
+* Hive支持在UDF中使用Java的基本数据类型(以及一些像java.util.List和java.util.Map这样的类型)
+    * public String evaluate(String str)效果是一样的
+    * 但是通过使用Text，可以利用对象重用的优势，增效节支
+* 一个UDF必须满足两个条件：
+    * 一个UDF必须是org.apache.hadoop.hive.ql.exec.UDF的子类
+    * 一个UDF必须至少实现了evaluate()方法
+        * evaluate()方法不是由接口定义的，因为它可接受的参数的个数、它们的数据类型及其返回值的数据类型都是不确定的
+        * Hive会检查UDF，看能否找到和函数调用相匹配的evaluate()方法
+* 为了在Hive中使用UDF，需要把编译后的Java类打包成一个JAR文件，接下来，在metastore中注册这个函数并使用CREATE FUNCTION语句为它起名：
+    ```
+    CREATE FUNCTION strip AS 'com.hadoopbook.hive.Strip'
+    USING JAR '/path/to/hive-examples.jar';
+    ```
+    * 本地使用Hive只需要一个本地文件路径就足够了，但在集群上，应当将JAR文件复制到HDFS中，并在 USING JAR 子句中使用HDFS的URI
+    * 如此，可以想使用内置函数一样使用UDF：
+        ```
+        hive> SELECT strip(' bee ') FROM dummy;
+        bee
+        hive> SELECT STRIP('banana', 'ab') FROM dummy;
+        nan
+        ```
+* 删除此函数，可以使用 DROP FUNCTION 语句
+    ```
+    DROP FUNCTION strip;
+    ```
+* TEMPORARY 关键字可以创建一个仅在Hive会话期间有效的函数，即此函数并没有在metastore中持久化存储
+    ```
+    ADD JAR /path/to/hive-examples.jar;
+    CREATE TEMPORARY FUNCTION strip AS 'com.hadoopbook.hive.Strip'
+    ```
+    * 使用临时函数时，最好在主目录中创建一个.hiverc文件，以包含定义这些UDF的命令，而这个文件会在每个Hive会话开始时自动运行
+* 可以在启动时指定查找附加JAR文件的路径，此路径会被加入Hive的类路径(也包括任务的类路径)
+    * 有两种指明路径的办法：
+        * 在hive命令后传递 --auxpath 选项：
+            * % hive --auxpath /path/to/hive-examples.jar
+        * 运行Hive前设置HIVE_AUX_JARS_PATH环境变量
+    * 附加路径可以是一个用逗号分隔的JAR文件路径列表或包含JAR文件的目录
+
+### 写 UDAF
+```
+package com.hadoopbook.hive;
+
+import org.apache.hadoop.hive.ql.exec.UDAF;
+import org.apache.hadoop.hive.ql.exec.UDAFEvaluator;
+import org.apache.hadoop.io.IntWritable;
+
+public class Maximum extends UDAF {
+
+  public static class MaximumIntUDAFEvaluator implements UDAFEvaluator {
+    
+    private IntWritable result;
+    
+    public void init() {
+      System.err.printf("%s %s\n", hashCode(), "init");
+      result = null;
+    }
+
+    public boolean iterate(IntWritable value) {
+      System.err.printf("%s %s %s\n", hashCode(), "iterate", value);
+      if (value == null) {
+        return true;
+      }
+      if (result == null) {
+        result = new IntWritable(value.get());
+      } else {
+        result.set(Math.max(result.get(), value.get()));
+      }
+      return true;
+    }
+
+    public IntWritable terminatePartial() {
+      System.err.printf("%s %s\n", hashCode(), "terminatePartial");
+      return result;
+    }
+
+    public boolean merge(IntWritable other) {
+      System.err.printf("%s %s %s\n", hashCode(), "merge", other);
+      return iterate(other);
+    }
+
+    public IntWritable terminate() {
+      System.err.printf("%s %s\n", hashCode(), "terminate");
+      return result;
+    }
+  }
+}
+```
+
+```
+hive> CREATE TEMPORARY FUNCTION maximum AS 'com.hadoopbook.hive.Maximum';
+hive> SELECT maximum(temperature) FROM records;
+111
+```
+* 聚集函数比普通的UDF难写。值是在块内进行聚集的(这些块可能分布在很多任务重)，从而实现时要能够把部分的聚集值组合成最终结果
+* UDAF 必须是org.apache.hadoop.hive.ql.exec.UDAF的子类，且包含一个或多个嵌套的，实现org.apache.hadoop.hive.ql.exec.UDAFEvaluator的静态类
+    * 示例中只有MaximumIntUDAFEvaluator一个嵌套类，可以添加更多的计算函数(MaximumLongUDAFEvaluator、MaximumFloatUDAFEvaluator)来提供长整型、浮点型等类型最大值的UDAF的重载
+    * 一个计算函数必须实现下面5个方法：
+        * init()
+            * 负责初始化计算函数并重设它的内部状态
+        * iterate()
+            * 每次对一个新值进行聚集计算时都会调用iterate()方法。计算函数要根据聚集计算的结果更新其内部状态
+            * iterate()接受的参数和Hive中被调用的参数是对应的
+        * terminatePartial()
+            * Hive需要部分聚集结果时会调用terminatePartial()方法
+            * 此方法必须返回一个封装了聚集计算当前状态的对象
+        * merge()
+            * 在Hive决定要合并一部分聚集值和另一部分聚集值时会调用merge()方法
+            * 接受一个对象作为输入。这个对象的类型必须和terminatePartial()方法的返回类型一致
+        * terminate()
+            * Hive需要最终聚集结果时会调用terminate()方法
+            * 计算函数需要把状态作为一个值返回
+
+* 下图显示了计算函数的处理流程
+    ![avatar](https://github.com/zXingchu/bigdata/blob/master/hive/包含UDAF部分结果的数据流.png "包含UDAF部分结果的数据流")
+
+#### 更复杂的UDAF
+* 前面的示例中部分聚集结果可以使用和最终结果相同的类型(IntWritable)来表示。更复杂的聚集函数，情况并非如此，如计算均值
+```
+package com.hadoopbook.hive;
+
+import org.apache.hadoop.hive.ql.exec.UDAF;
+import org.apache.hadoop.hive.ql.exec.UDAFEvaluator;
+import org.apache.hadoop.hive.serde2.io.DoubleWritable;
+
+public class Mean extends UDAF {
+
+  public static class MeanDoubleUDAFEvaluator implements UDAFEvaluator {
+    public static class PartialResult {
+      double sum;
+      long count;
+    }
+    
+    private PartialResult partial;
+
+    public void init() {
+      partial = null;
+    }
+
+    public boolean iterate(DoubleWritable value) {
+      if (value == null) {
+        return true;
+      }
+      if (partial == null) {
+        partial = new PartialResult();
+      }
+      partial.sum += value.get();
+      partial.count++;
+      return true;
+    }
+
+    public PartialResult terminatePartial() {
+      return partial;
+    }
+
+    public boolean merge(PartialResult other) {
+      if (other == null) {
+        return true;
+      }
+      if (partial == null) {
+        partial = new PartialResult();
+      }
+      partial.sum += other.sum;
+      partial.count += other.count;
+      return true;
+    }
+
+    public DoubleWritable terminate() {
+      if (partial == null) {
+        return null;
+      }
+      return new DoubleWritable(partial.sum / partial.count);
+    }
+  }
+}
+```
+* 上面的示例中，部分聚集结果用一个嵌套的静态类struct实现，由于使用了Hive能够处理的字段类型(Java原子数据类型)，Hive能够自己对这个类进行序列化和反序列化
+
+## 延伸
+* Edward Capriolo&Dean Wampler&Jason Rutherglen\<\<Programming Hive\>\> http://shop.oreilly.com/product/0636920023555.do
