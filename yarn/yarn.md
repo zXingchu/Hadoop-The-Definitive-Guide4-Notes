@@ -17,12 +17,13 @@
             - [抢占](#抢占)
         - [延迟调度](#延迟调度)
         - [主导资源公平性](#主导资源公平性)
+    - [延伸](#延伸)
 
 <!-- /TOC -->
 # YARN
 Apache YARN(Yet Another Resource Negotiator)是Hadoop的集群资源管理系统。具有足够的通用性，同样可以支持其他的分布式计算
 YARN提供请求和使用集群资源的API。用户代码中往往使用的是分布式计算框架提供的更高层API，这些API建立在YARN之上且向用户隐藏了资源管理细节
-![avatar](E:/学习/bigdata/yarn/YARN应用.png "YARN应用")
+![avatar](https://github.com/zXingchu/bigdata/blob/master/yarn/YARN应用.png "YARN应用")
 如上图，一些分布式计算框架(MapReduce，Spark等等)作为YARN应用运行在集群计算层(YARN)和集群存储层(HDFS和HBase)上
 而Pig，Hive和Crunch都是运行在MapReduce，Spark或Tez之上的处理框架，它们不和YARN直接交互
 ## YARN 应用运行机制
@@ -273,3 +274,5 @@ YARN中有三种调度器可用：
 * 容量调度器进行配置后，将capacity-scheduler.xml文件中的org.apache.hadoop.yarn.util.resource.DominantResourceCalculator设为yarn.scheduler.capacity.resource-calcalator可以使用DRF
 * 公平调度器通过将分配文件中的顶层元素defaultQueueSchedulingPolicy设为drf可以使用DRF
 
+## 延伸
+* Arun C. Murthy etc《Apache Hadoop YARN》：http://yarn-book.com/
